@@ -3,12 +3,44 @@ import pandas as pd
 import plotly.graph_objects as go
 import fitz
 import io
+import re
+import datetime
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
 
-# ---------- CAM PDF GENERATOR ----------
+# ------------------------------
+# BASIC ACCESS CONTROL
+# ------------------------------
+
+PASSWORD = "intellicredit"
+
+password = st.sidebar.text_input("Enter Access Password", type="password")
+
+if password != PASSWORD:
+    st.warning("Unauthorized access. Please enter valid password.")
+    st.stop()
+
+
+# ------------------------------
+# SECURITY CONSTANTS
+# ------------------------------
+
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+
+
+# ------------------------------
+# INPUT SANITIZATION
+# ------------------------------
+
+def clean_text(text):
+    return re.sub(r"[^a-zA-Z0-9\s]", "", text)
+
+
+# ------------------------------
+# CAM PDF GENERATOR
+# ------------------------------
 
 def generate_cam_pdf(company, sector, promoter, revenue, debt, score, loan_amount, decision):
 
@@ -41,44 +73,66 @@ def generate_cam_pdf(company, sector, promoter, revenue, debt, score, loan_amoun
     return buffer
 
 
-# ---------- UI START ----------
+# ------------------------------
+# UI START
+# ------------------------------
 
 st.title("IntelliCredit AI")
 st.subheader("AI-Powered Corporate Credit Decision Engine")
 
+st.sidebar.write("Session started:", datetime.datetime.now())
 
-# ---------- COMPANY INFORMATION ----------
+
+# ------------------------------
+# COMPANY INFORMATION
+# ------------------------------
 
 st.header("Company Information")
 
-company = st.text_input("Company Name")
-sector = st.text_input("Sector")
-promoter = st.text_input("Promoter Name")
+company = clean_text(st.text_input("Company Name"))
+sector = clean_text(st.text_input("Sector"))
+promoter = clean_text(st.text_input("Promoter Name"))
 
 
-# ---------- FINANCIAL DATASET ----------
+# ------------------------------
+# FINANCIAL DATASET
+# ------------------------------
 
 st.header("Upload Financial Dataset")
 
-uploaded_file = st.file_uploader("Upload Financial CSV")
+uploaded_file = st.file_uploader("Upload Financial CSV", type=["csv"])
 
 if uploaded_file is not None:
 
-    df = pd.read_csv(uploaded_file)
+    if uploaded_file.size > MAX_FILE_SIZE:
+        st.error("File too large. Maximum size allowed is 5MB.")
+        st.stop()
 
-    st.subheader("Financial Data")
-    st.dataframe(df)
+    try:
+        df = pd.read_csv(uploaded_file)
+    except Exception:
+        st.error("Invalid or corrupted CSV file.")
+        st.stop()
+
+    required_columns = ["revenue_cr", "total_debt_cr"]
+
+    if not all(col in df.columns for col in required_columns):
+        st.error("Dataset must contain 'revenue_cr' and 'total_debt_cr' columns.")
+        st.stop()
+
+    st.subheader("Financial Data (Preview)")
+    st.dataframe(df.head())
 
     revenue = df["revenue_cr"].iloc[-1]
     debt = df["total_debt_cr"].iloc[-1]
 
-    # Credit Score Logic
-    if revenue > 20:
-        score = 72
-    else:
-        score = 55
 
-    # Credit Score Gauge
+    # ------------------------------
+    # CREDIT SCORE
+    # ------------------------------
+
+    score = 72 if revenue > 20 else 55
+
     gauge = go.Figure(go.Indicator(
         mode="gauge+number",
         value=score,
@@ -96,7 +150,11 @@ if uploaded_file is not None:
 
     st.plotly_chart(gauge)
 
-    # Risk Indicators
+
+    # ------------------------------
+    # RISK INDICATORS
+    # ------------------------------
+
     st.subheader("Risk Indicators")
 
     if debt > revenue:
@@ -111,7 +169,10 @@ if uploaded_file is not None:
         st.info("Moderate credit risk")
 
 
-    # Five C's Radar Chart
+    # ------------------------------
+    # FIVE C'S RADAR CHART
+    # ------------------------------
+
     categories = ['Character','Capacity','Capital','Collateral','Conditions']
     values = [14,18,16,10,13]
 
@@ -131,7 +192,10 @@ if uploaded_file is not None:
     st.plotly_chart(radar)
 
 
-    # Loan Recommendation
+    # ------------------------------
+    # LOAN RECOMMENDATION
+    # ------------------------------
+
     st.subheader("Loan Recommendation")
 
     loan_amount = revenue * 0.5
@@ -141,7 +205,10 @@ if uploaded_file is not None:
     st.write(f"Suggested Interest Rate: {interest_rate}%")
 
 
-    # AI Explanation
+    # ------------------------------
+    # AI DECISION EXPLANATION
+    # ------------------------------
+
     st.subheader("AI Decision Explanation")
 
     if debt > revenue:
@@ -156,7 +223,10 @@ if uploaded_file is not None:
         st.write("• Credit profile indicates elevated lending risk.")
 
 
-    # Final Lending Decision
+    # ------------------------------
+    # FINAL LENDING DECISION
+    # ------------------------------
+
     st.subheader("Final Lending Decision")
 
     if score >= 75:
@@ -169,7 +239,10 @@ if uploaded_file is not None:
     st.write("Decision:", decision)
 
 
-    # Credit Memo
+    # ------------------------------
+    # CREDIT MEMO
+    # ------------------------------
+
     if st.button("Generate Credit Appraisal Memo"):
 
         st.subheader("Credit Appraisal Memo")
@@ -195,19 +268,29 @@ if uploaded_file is not None:
         )
 
 
-# ---------- ANNUAL REPORT ANALYSIS ----------
+# ------------------------------
+# ANNUAL REPORT ANALYSIS
+# ------------------------------
 
 st.header("Upload Annual Report")
 
-pdf_file = st.file_uploader("Upload Annual Report PDF", type="pdf")
+pdf_file = st.file_uploader("Upload Annual Report PDF", type=["pdf"])
 
 if pdf_file:
 
-    pdf = fitz.open(stream=pdf_file.read(), filetype="pdf")
+    if pdf_file.size > MAX_FILE_SIZE:
+        st.error("PDF file too large. Max 5MB allowed.")
+        st.stop()
+
+    try:
+        pdf = fitz.open(stream=pdf_file.read(), filetype="pdf")
+    except Exception:
+        st.error("Invalid or corrupted PDF file.")
+        st.stop()
 
     text = ""
 
-    for page in pdf:
+    for page in pdf[:10]:  # limit parsing
         text += page.get_text()
 
     st.subheader("Extracted Text Preview")
